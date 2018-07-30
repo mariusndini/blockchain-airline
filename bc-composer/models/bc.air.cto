@@ -1,0 +1,67 @@
+namespace bc.air
+/*
+PARTICIPANTS:
+	WebAdmin - admin for web APIs
+*/
+
+
+participant webAdmin identified by id {
+	o String id
+}
+
+concept luggage{
+	o String bag	
+  	o Integer height
+    o Integer length
+	o Integer width
+}
+
+asset ticket identified by id {
+    o String id
+	o String to default = 'jfk'
+    o String from default = 'fra'
+    o String gate default = '10'
+    o DateTime time default = '2018-07-29T22:10:10.347Z'
+  
+	o luggage[] bags optional
+  	o luggage carryOn optional
+}
+  
+participant flyer identified by id {
+	o String id
+  	o String name
+  	o String rewardAddress default = '0x00'
+    --> ticket[] ticket
+	o String address optional
+}
+
+participant airline identified by id {
+	o String id
+  	o String name
+}
+
+participant airport identified by id{
+	o String id 
+  	o String name
+}
+
+participant security identified by id {
+	o String id
+	--> airport airport
+}
+
+
+
+/*
+ASSETS:
+
+*/
+asset SampleAsset identified by assetId {
+  o String assetId
+  o String value
+}
+
+transaction ChangeAssetValue {
+  o String newValue
+  --> Asset relatedAsset
+}
