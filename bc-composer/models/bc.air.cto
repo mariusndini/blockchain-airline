@@ -2,6 +2,7 @@ namespace bc.air
 /*
 PARTICIPANTS:
 	WebAdmin - admin for web APIs
+
 */
 
 
@@ -9,22 +10,18 @@ participant webAdmin identified by id {
 	o String id
 }
 
-concept luggage{
-	o String bag	
-  	o Integer height
-    o Integer length
-	o Integer width
-}
 
 asset ticket identified by id {
     o String id
+    o String flyer
 	o String to default = 'jfk'
-    o String from default = 'fra'
+    o String from default = 'cgn'
     o String gate default = '10'
     o DateTime time default = '2018-07-29T22:10:10.347Z'
+  	o String airline
+  	o Boolean tripComplete default = false
   
-	o luggage[] bags optional
-  	o luggage carryOn optional
+  
 }
   
 participant flyer identified by id {
@@ -33,6 +30,7 @@ participant flyer identified by id {
   	o String rewardAddress default = '0x00'
     --> ticket[] ticket
 	o String address optional
+  
 }
 
 participant airline identified by id {
@@ -54,7 +52,7 @@ participant security identified by id {
 
 /*
 ASSETS:
-
+	
 */
 asset SampleAsset identified by assetId {
   o String assetId
