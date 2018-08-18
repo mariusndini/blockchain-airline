@@ -3,8 +3,8 @@ var URL = 'https://blockchain.sapnait.com:40101/';
 
 var GLOBALS = {};
 let hypeDocument;
-var video = document.createElement("video");
 
+var video = document.createElement("video");
 var isVideoSetUp = false;
 
 
@@ -13,24 +13,49 @@ function open(hype){
 }
 
 function newFlyer(hypeDocument){
-    var data = {
-        "name":$('#signupFlyerName').val(),
-        "address": $('#signupFlyerAddress').val()
-    }
-    
-    $.ajax({
-        type: "POST",
-        url: URL + 'flyer',
-        data: data,
-        dataType: 'json',
-        success: function(d){
-            console.log(d);
-            loadUser(d);
-        },
-    });
+    if( $.trim($('#signupFlyerName').val()).length>0 && $.trim($('#signupFlyerAddress').val()).length>0 ){
+        var data = {
+            "name":$('#signupFlyerName').val(),
+            "address": $('#signupFlyerAddress').val()
+        }
+        data.socketid = socket.id;
+        data.msgType = 'newUser';
+
+        $.ajax({
+            type: "POST",
+            url: URL + 'flyer',
+            data: data,
+            dataType: 'json',
+            success: function(d){
+                console.log(d);
+                GLOBALS.flyer = d;
+                //loadUser(d);
+            },
+        });
+        
+    }else{
+        alert('Please Enter Flyer Name & Address');
+    }//end if
+
 
 }//end get flyer
 
+
+function loadQR(){
+    alert('QR');
+    $('#qrcode').qrcode({
+        width: 100, height: 100,
+		render	: "canvas",
+		text	: GLOBALS.qrText
+    });
+    
+    $('#bigQR').qrcode({
+        width:250 , height: 250,
+		render	: "canvas",
+		text	: GLOBALS.qrText
+	});
+
+}
 
 function loadUser(flyer){
     GLOBALS.flyer = flyer;
@@ -45,35 +70,19 @@ function loadUser(flyer){
     qrText.flyer = GLOBALS.flyer.name;
     qrText.id = GLOBALS.flyer._id;
     
-    qrText = JSON.stringify(qrText);
+    GLOBALS.qrText = JSON.stringify(qrText);
 
-    $('#qrcode').qrcode({
-        width: 100, height: 100,
-		render	: "canvas",
-		text	: qrText
-    });
-    
-    $('#bigQR').qrcode({
-        width:250 , height: 250,
-		render	: "canvas",
-		text	: qrText
-	});
+    loadQR();
 
-
-    
     for(i = 0; i < flyer.trips.length; i++){
         //clone object
         var nextItem = $('#flyerTripIcon').clone();
         nextItem.attr('id','flyerTripIcon' + i );
         // change item
         nextItem.css({left: 113 + (105 *  i) });
-        
-        nextItem.find('#flyerTripLoc').html('JFK' + i);
-        
-        nextItem.find('#flyerTicketNumber').show();
-        nextItem.find('#flyerTicketNumber').html(flyer.trips[i].ticket);
+        nextItem.find('#flyerTripLoc').html( (flyer.trips[i].to || 'JFK').toUpperCase() );
+        nextItem.find('#flyerTicketNumber').html(flyer.trips[i]._id);
 
-        //insert item
         nextItem.find('#flyerAddSign').hide();
 
         nextItem.click(( event )=>{
@@ -100,7 +109,7 @@ function showFlyers(hypeDocument){
             table.html(' ');
 
             for(i=0; i < d.length; i++){
-                table.append('<tr onclick=\'loadUser('+ JSON.stringify(d[i]) +')\'><td><i class="far fa-user"></i></td><td>'+d[i].name+'</td><td>'+d[i].trips.length+'</td><td>'+ (parseInt(d[i].reward.balance) || '' )+'</td></tr>');
+                table.append('<tr onclick=\'loadUser('+ JSON.stringify(d[i]) +')\'><td style="width:8%;text-align:center;vertical-align:middle;"><i style="font-size:30px" class="far fa-user"></i></td><td>'+d[i].name+'<br>Flights '+d[i].trips.length+'<br>Coins '+ (parseInt(d[i].reward.balance) || '' )+'</td></tr>');
             }
             GLOBALS.user = d;
 
@@ -109,103 +118,135 @@ function showFlyers(hypeDocument){
 
 }//end show flyers
 
-function orderTicket(){
 
-    var data = { to: "jfk", 
-                 from: "tia", 
-                 date: "2018-08-30T22:49:07.169Z"}
+function orderTickets(){
+    var dataTo = { to: GLOBALS.ticketQuery.to, 
+        from: GLOBALS.ticketQuery.from,
+        date: GLOBALS.ticketQuery.toDate,
+        price: GLOBALS.ticketQuery.price / 2
+    }
+    dataTo.socketid = socket.id;
+    dataTo.msgType = 'tktTo';
+
+    var dataReturn = { to: GLOBALS.ticketQuery.from, 
+        from: GLOBALS.ticketQuery.to, 
+        date: GLOBALS.ticketQuery.fromDate,
+        price: GLOBALS.ticketQuery.price / 2
+    }
+    dataReturn.socketid = socket.id;
+    dataReturn.msgType = 'tktFrom';
+
+    // order ticket function
+    function orderTicket(data){    
+        return new Promise(function(resolve, reject) {
+            $.ajax({
+                type: "POST",
+                url: URL + 'ticket/' + GLOBALS.flyer._id,
+                data: data,
+                dataType: 'json',
+                success: function(d){
+                    GLOBALS.ticketConfirm = 0;
+                    resolve(d.f)
+                },
+            });
+        });
+    }//end order ticket
     
-    $.ajax({
-        type: "POST",
-        url: URL + 'ticket/' + GLOBALS.flyer._id,
-        data: data,
-        dataType: 'json',
-        success: function(d){
-            console.log(d.f);
-            GLOBALS.ticketConfirm = 0;
+    return orderTicket(dataTo).then((d)=>{
+        console.log('To Ticket Ordered');
+        return orderTicket(dataReturn)
+    }).then((d)=>{
+        console.log('From Ticket Ordered');
+        GLOBALS.flyer = d;
+        
+    })
 
-            loadUser(d.f);
-        },
-    });
-}//end order ticket
+}//end order tickets
 
-//https://blockchain.sapnait.com:40101/luggage/flyer/5b634374e3d93e36e35022bf/ticket/5b699ca5b14f222794fe2e4b
-//change to match above
-function addLuggage(){
-    var data = { to: "jfk", 
-                 from: "tia", 
-                 date: "2018-08-30T22:49:07.169Z"}
-    
-    $.ajax({
-        type: "POST",
-        url: URL + 'ticket/' + GLOBALS.flyer._id,
-        data: data,
-        dataType: 'json',
-        success: function(d){
-            console.log(d);
-        },
-    });
-}//end order ticket
+
 
 
 //top up reward program
 function flyerTripTicket(){
-    var hype = HYPE.documents["index"];
-    GLOBALS.thisTicket = $('#'+event.currentTarget.id).find('#flyerTicketNumber').html();
+    GLOBALS.ticketID = $('#'+event.currentTarget.id).find('#flyerTicketNumber').html();
     
     $.ajax({
         type: "GET",
-        url: URL + 'ticket/' + GLOBALS.thisTicket,
+        url: URL + 'ticket/' + GLOBALS.ticketID + '/flyer/' + GLOBALS.flyer._id,
         success: function(d){
-            hype.showSceneNamed('ticket', hypeDocument.kSceneTransitionPushRightToLeft, 0.2);
             GLOBALS.thisTicket = d;
             console.log(GLOBALS.thisTicket);
-
-            $('#ticketName').html(d.flyer);
-            $('#ticketFrom').html(d.from.toUpperCase());
-
-            var time = new Date(d.time);
-            $('#ticketTo').html(d.to.toUpperCase());
-            $('#ticketBoarding').html( time.getHours() + ':' + time.getMinutes());
-            $('#ticketDate').html( (time.getMonth()+1)+'/'+time.getDate()+'/'+time.getFullYear() );
-            $('#ticketFlight').html();
-
-
+            hypeDocument.showSceneNamed('ticket', hypeDocument.kSceneTransitionPushRightToLeft, 0.2);
+            loadTicket(d);
         },
     });
     
 }//end flyer top-up
 
+function loadTicket(d){
+
+    $('#ticketName').html(d.flyer);
+    $('#fromTicket').html(d.from.toUpperCase());
+    $('#toTicket').html(d.to.toUpperCase());
+
+    var time = new Date(d.time);
+    $('#ticketBoarding').html( time.getHours() + ':' + time.getMinutes());
+    $('#ticketDate').html( (time.getMonth()+1)+'/'+time.getDate()+'/'+time.getFullYear() );
+    
+    var bagCounter = 0;
+    for(i=0; i < d.luggage.length; i++){
+        if(d.luggage[i].type == 1){
+            $('#carryonCheck').show();
+            $('#carryonAdd').hide();
+        }else{
+            bagCounter++
+            $('#bag'+bagCounter+'Check').show();
+            $('#bag'+bagCounter+'Add').hide();
+        }
+
+    }//end for
+    
+
+}
+
 
 
 //top up reward program
 function flyerTopUp(){
+    var data = {}
+    data.socketid = socket.id;
+    data.msgType = 'topup';
+    
     $.ajax({
         type: "POST",
         url: URL + 'points/' + GLOBALS.flyer._id,
+        data: data,
+        dataType: 'json',
         success: function(d){
             GLOBALS.flyer = d;
             console.log(d);
+            
             $('#flyerPoints').html( parseInt(GLOBALS.flyer.reward.balance) );
 
         },
     });
 }//end flyer top-up
 
-
+var vidAnim;
 function qrLogic(){ 
     if(!isVideoSetUp){
         isVideoSetUp = true;
         var canvasElement = document.getElementById("qrCanvas");
         var canvas = canvasElement.getContext("2d");
 
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(function(stream) {
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then(function(stream) {
             video.srcObject = stream;
 
             video.setAttribute("playsinline", true);
             video.play();
             //video.onpause = ()=>{alert('Paused')}
-            requestAnimationFrame(tick);
+            vidAnim = requestAnimationFrame(tick);
         });
         
         function tick() {
@@ -235,6 +276,7 @@ function qrLogic(){
                     drawLine(code.location.bottomRightCorner, code.location.bottomLeftCorner, "#F0AB02");
                     drawLine(code.location.bottomLeftCorner, code.location.topLeftCorner, "#F0AB02");
 
+                    cancelAnimationFrame(vidAnim);
                     qrCodeScanned(code);
                 } 
             }
@@ -252,13 +294,20 @@ function qrCodeScanned(code){
         data = JSON.parse(json);
         GLOBALS.QR = data;
 
-        if(data.type == 'flyer'){
+        function stopVid(){
             video.srcObject.getTracks()[0].stop();
             isVideoSetUp = false;
+        }
 
-            hypeDocument.startTimelineNamed('giftCoins', hypeDocument.kDirectionForward)
+        if(data.type == 'flyer'){
+            stopVid();
+            hypeDocument.getSymbolInstanceById('payBar').startTimelineNamed('giftCoins', hypeDocument.kDirectionForward);
             transferPoints(GLOBALS.QR);
             
+        }else if (data.type == 'bagcheck'){
+            stopVid();
+            hypeDocument.getSymbolInstanceById('payBar').startTimelineNamed('addBags', hypeDocument.kDirectionForward);
+            addBagsToTicket(GLOBALS.QR);
         }
 
     } catch (e) {
@@ -267,7 +316,99 @@ function qrCodeScanned(code){
 }//end qr code scanned
 
 
-//https://blockchain.sapnait.com:40101/points/transfer/5b699642982fc87199a119dd
+
+function carryOnToTicket(){
+    var data = { bag: { weight: 25, type: 1, beacon: false } };
+    addBagsToTicket(data);
+}
+
+function firstLuggageToTIcket(){
+
+    var data = { bag: { weight: 50, type: 0, beacon: bagBeacon } };
+    addBagsToTicket(data);
+}
+
+
+function addBagsToTicket(data){
+    if(bagBeacon){
+        data.socketid = socket.id;
+        data.msgType = 'bagBeacon';
+    }
+
+    $.ajax({
+        type: 'POST',
+        url: URL + 'luggage/flyer/' + GLOBALS.flyer._id +'/ticket/' + GLOBALS.thisTicket.id,
+        data: data,
+        dataType: 'json',
+        success: function(d){
+            console.log(d);
+            
+            if(!bagBeacon){
+                hypeDocument.goToTimeInTimelineNamed(0.05, 'bagOptions')
+                hypeDocument.continueTimelineNamed('bagOptions', hypeDocument.kDirectionReverse)
+            }
+           
+            GLOBALS.thisTicket.luggage = d.luggage;
+            loadTicket(GLOBALS.thisTicket);
+            
+        },
+    });//end ajax call
+
+
+}//end transfer points function
+
+
+function addfood(foodID){
+    var data = { food: 'Pasta', paid: false, id:1};
+    if(foodID == 'food1'){
+        data.food = 'Beef Stew'
+        data.paid = false;
+        data.id = 1;
+    }else if (foodID == 'food2'){
+        data.food = 'Chicken Pasta'
+        data.paid = false;
+        data.id = 2;
+    }else if (foodID == 'food3'){
+        data.food = 'Veggie'
+        data.paid = false;
+        data.id = 3;
+    }else if (foodID == 'food4'){
+        data.food = 'Sushi'
+        data.paid = true;   
+        data.id = 4;
+    }else if (foodID == 'food5'){
+        data.food = 'Steak'
+        data.paid = true;       
+        data.id = 5;
+    }else if (foodID == 'food6'){
+        data.food = 'Tuna'
+        data.paid = true;     
+        data.id = 6;
+    }
+
+    if(data.paid){
+        data.socketid = socket.id;
+        data.msgType = 'food';
+    }
+
+    $.ajax({
+        type: 'POST',
+        url: URL + 'food/flyer/' + GLOBALS.flyer._id +'/ticket/' + GLOBALS.thisTicket.id,
+        data: data,
+        dataType: 'json',
+        success: function(d){
+            console.log(d);
+            $('#foodCheck' + data.id).show();
+            //hypeDocument.getSymbolInstanceById('payBar').startTimelineNamed('addBags', hypeDocument.kDirectionReverse);
+            GLOBALS.flyer = d;
+            //loadTicket(GLOBALS.thisTicket);
+            
+        },
+    });//end ajax call
+
+
+}//end transfer points function
+
 function transferPoints(data){
     
     $('#qrAction').html('Gift Coins');
@@ -279,6 +420,7 @@ function transferPoints(data){
     $('#qrConfirmButton').removeAttr('disabled'); //enable button push
 
     $('#qrConfirmButton').click({input: data}, (event)=>{
+        $('#qrConfirmButton').unbind("click");
         $('#qrConfirmButton').attr('disabled', 'disabled');//disable button push
 
         var data = {"to": event.data.input.id,  "amount": $('#sendToAmount').val() };
@@ -290,7 +432,7 @@ function transferPoints(data){
             dataType: 'json',
             success: function(d){
                 console.log(d);
-                hypeDocument.startTimelineNamed('giftCoins', hypeDocument.kDirectionReverse);
+                hypeDocument.getSymbolInstanceById('payBar').startTimelineNamed('giftCoins', hypeDocument.kDirectionReverse);
                 closePay();
             },
         });//end ajax call
@@ -303,7 +445,8 @@ function transferPoints(data){
 
 function openPay(){
     isPayOpen = false;
-    hypeDocument.startTimelineNamed('showPay', hypeDocument.kDirectionForward);
+    //hypeDocument.startTimelineNamed('showPay', hypeDocument.kDirectionForward);
+    hypeDocument.getSymbolInstanceById('payBar').startTimelineNamed('showPay', hypeDocument.kDirectionForward);
 
 }
 
@@ -312,19 +455,188 @@ function closePay(){
     isPayOpen = true;
     isVideoSetUp = false;
 
-    hypeDocument.startTimelineNamed('showPay', hypeDocument.kDirectionReverse);
+    //hypeDocument.startTimelineNamed('showPay', hypeDocument.kDirectionReverse);
+    hypeDocument.getSymbolInstanceById('payBar').startTimelineNamed('showPay', hypeDocument.kDirectionReverse);
+}
+
+function setTestQr(code){
+    var qrText = {};
     
+    if(code == 1){
+        qrText.type = 'bagcheck';
+        qrText.id = '1';
+        qrText = JSON.stringify(qrText);
+    
+    }else if (code == 2){
+        qrText.type = 'flyer';
+
+
+    }
+
+    $('#qrTests').qrcode({
+        width: 200, height: 200,
+		render	: "canvas",
+		text	: qrText
+    });
+
+
 }
 
 
+function handleCheckboxChange(box){
+    if($('#luggageTracking').prop('checked')){
+        $('#baggageTrackCoins').show();
+    }else{
+        $('#baggageTrackCoins').hide();
+    }
+}//end handle baggage change
 
 
 
 
 
 
+var socket = io('https://blockchain.sapnait.com:40101/');
+		
+socket.on('connect', function () { 
+    console.log('connected', socket.id);
+});
+
+socket.on('disconnect', function () { 
+    console.log('disconnected');
+});
+
+socket.on('tktTo', function (data) { 
+    if(data.message.step == 0){
+        hypeDocument.startTimelineNamed('toTicketSteps', hypeDocument.kDirectionForward)
+    }else if(data.message.complete == true){
+        $('#orderReturnTIcketButton').prop('disabled', false)
+        $('#orderReturnTIcketButton').click(()=>{
+            hypeDocument.continueTimelineNamed('toTicketSteps', hypeDocument.kDirectionForward)
+        })
+
+    }else{
+        $('#toTicket' + data.message.step).css('background-color', '#16a085');
+    }
+
+})
+
+socket.on('tktFrom', function (data) { 
+    //console.log(data);
+    if(data.message.step == 0){
+        //hypeDocument.continueTimelineNamed('toTicketSteps', hypeDocument.kDirectionForward)
+    }else if(data.message.complete == true){
+        $('#orderHomeTIcketButton')
+        .prop('disabled', false)
+        .click(()=>{
+            loadUser(GLOBALS.flyer);
+        })
+
+    }else{
+        $('#fromTicket' + data.message.step).css('background-color', '#16a085');
+    }
+})
 
 
+socket.on('newUser', function (data) { 
+    console.log(data);
+    if(data.message.step == 0){
+        hypeDocument.continueTimelineNamed('showNewFlyer', hypeDocument.kDirectionForward)
+    }else{
+        $('#newUserStep' + data.message.step).css('background-color', '#16a085');
+    }
+
+    if(data.message.complete == true){
+        $('#newUserButton')
+        .prop('disabled', false)
+        .click(()=>{
+            loadUser(GLOBALS.flyer);
+        })
+    }
+
+})
+
+
+socket.on('bagBeacon', function (data) { 
+    console.log(data);
+    if(data.message.step == 0){
+        $('#bagBeaconButton').prop('disabled', true)
+        $('#bagOptionsHeader').html('Checking Your Luggage In<br>With Bag Tracking');
+
+        for(i=1; i <= 4; i++){
+            $('#bagStep' + i).css('background-color', '#D3CDAF');
+        }
+
+        hypeDocument.continueTimelineNamed('bagOptions', hypeDocument.kDirectionForward)
+    }else{
+        $('#bagStep' + data.message.step).css('background-color', '#16a085');
+    }
+
+    if(data.message.complete == true){
+        $('#bagBeaconButton')
+        .prop('disabled', false)
+        .click(()=>{
+            hypeDocument.goToTimeInTimelineNamed(0.005, 'bagOptions')
+            hypeDocument.continueTimelineNamed('bagOptions', hypeDocument.kDirectionReverse)
+
+        })
+    }
+
+})
+
+
+socket.on('food', function (data) { 
+
+    console.log(data);
+    if(data.message.step == 0){
+        $('#bagBeaconButton').prop('disabled', true)
+        $('#bagOptionsHeader').html('Placing Your Food Order');
+
+        for(i=1; i <= 4; i++){
+            $('#bagStep' + i).css('background-color', '#D3CDAF');
+        }
+        hypeDocument.goToTimeInTimelineNamed(1, 'bagOptions')
+    }else{
+        $('#bagStep' + data.message.step).css('background-color', '#16a085');
+    }
+
+    if(data.message.complete == true){
+        $('#bagBeaconButton')
+        .prop('disabled', false)
+        .click(()=>{
+            hypeDocument.goToTimeInTimelineNamed(0.05, 'bagOptions')
+            hypeDocument.continueTimelineNamed('bagOptions', hypeDocument.kDirectionReverse)
+
+        })
+    }
+})
+
+
+socket.on('topup', function (data) { 
+    //console.log(data);
+
+    if(data.message.step == 0){
+        resetSteps();
+        $('#topupButton').prop('disabled', true);
+        hypeDocument.continueTimelineNamed('topUpSteps', hypeDocument.kDirectionForward)
+    }else{
+        $('#topup' + data.message.step).css('background-color', '#16a085');
+    }
+
+    if(data.message.complete == true){
+        $('#topupButton')
+        .prop('disabled', false)
+        .click(()=>{
+            hypeDocument.continueTimelineNamed('topUpSteps', hypeDocument.kDirectionReverse)
+        })
+    }
+
+})
+
+function resetSteps(){
+    $('.step').css('background-color', '#D3CDAF');
+
+}
 
 
 
