@@ -1,6 +1,7 @@
 var stellerURL = 'https://horizon-testnet.stellar.org/';
 
-
+renderjson.set_show_to_level(1);
+renderjson.set_icons('+', '-');
 
 function getUserAccount(){
     $.ajax({
@@ -9,11 +10,25 @@ function getUserAccount(){
         success: function(data){
             console.log(data);
 
-
+            $('#userStellerJSON').html( renderjson(data) );
+            $('#userMongoJSON').html( renderjson(GLOBALS.flyer) );
+            getDashboardTicket();
         },
     });
 }//end get flyer
 
+
+function getUserTransactionsDashboard(){
+    $.ajax({
+        type: "GET",
+        url: stellerURL + 'accounts/' + GLOBALS.flyer.reward.public +'/transactions',
+        success: function(data){
+            $('#userStellerJSON').html( renderjson(data._embedded.records) );
+
+        }
+    })
+
+}
 
 function getUserTransactions(){
     $.ajax({

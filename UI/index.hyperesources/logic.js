@@ -9,10 +9,26 @@ var isVideoSetUp = false;
 
 
 function open(hype){
+    console.log('change this to only run once');
     hypeDocument = hype;
+    GLOBALS.food = 'food2';
+
+    $.ajax({
+        type: "GET",
+        url: URL + 'flyer',
+        success: function(d){
+            GLOBALS.allFlyers = d;
+            GLOBALS.flyer = d[0];
+            GLOBALS.thisTicket = d[0].trips[0];
+            GLOBALS.user = d;
+
+        },
+      });
+
+
 }
 
-function newFlyer(hypeDocument){
+function newFlyer(){
     if( $.trim($('#signupFlyerName').val()).length>0 && $.trim($('#signupFlyerAddress').val()).length>0 ){
         var data = {
             "name":$('#signupFlyerName').val(),
@@ -29,7 +45,7 @@ function newFlyer(hypeDocument){
             success: function(d){
                 console.log(d);
                 GLOBALS.flyer = d;
-                //loadUser(d);
+                $('#viewAcctBtn').show();
             },
         });
         
@@ -42,6 +58,7 @@ function newFlyer(hypeDocument){
 
 
 function loadQR(){
+
     $('#qrcode').qrcode({
         width: 100, height: 100,
 		render	: "canvas",
@@ -69,12 +86,10 @@ function loadUser(flyer){
     qrText.flyer = GLOBALS.flyer.name;
     qrText.id = GLOBALS.flyer._id;
     
-    qrText = JSON.stringify(qrText);
-
-    GLOBALS.qrText = qrText;
+    GLOBALS.qrText = JSON.stringify(qrText);
 
     loadQR();
-    
+
     for(i = 0; i < flyer.trips.length; i++){
         //clone object
         var nextItem = $('#flyerTripIcon').clone();
@@ -108,8 +123,9 @@ function showFlyers(hypeDocument){
 
             var table = $('#flyersTable tbody');
             table.html(' ');
-
             for(i=0; i < d.length; i++){
+                console.log(i)
+
                 table.append('<tr onclick=\'loadUser('+ JSON.stringify(d[i]) +')\'><td style="width:8%;text-align:center;vertical-align:middle;"><i style="font-size:30px" class="far fa-user"></i></td><td>'+d[i].name+'<br>Flights '+d[i].trips.length+'<br>Coins '+ (parseInt(d[i].reward.balance) || '' )+'</td></tr>');
             }
             GLOBALS.user = d;
@@ -164,7 +180,57 @@ function orderTickets(){
 
 }//end order tickets
 
+function orderTicketDashboard(){
+    var dataTo = { to: 'CGN', 
+        from: 'JFK',
+        date: new Date(new Date().setDate(new Date().getDate() + 7)),
+        price: 950 / 2
+    }
+    dataTo.socketid = socket.id;
+    dataTo.msgType = 'newTicket';
 
+    function orderTicket(data){    
+        return new Promise(function(resolve, reject) {
+            $.ajax({
+                type: "POST",
+                url: URL + 'ticket/' + GLOBALS.flyer._id,
+                data: data,
+                dataType: 'json',
+                success: function(d){
+                    GLOBALS.ticketConfirm = 0;
+                    GLOBALS.flyer = d.f;
+                    console.log(d.f);
+                    resolve(d.f)
+                },
+            });
+        });
+    }//end order ticket
+    orderTicket(dataTo);
+
+}//end order tickets
+
+function getDashboardTicket(){
+    var tickets = {};
+    tickets.flights = [];
+
+    for (let i = 0, p = Promise.resolve(); i < GLOBALS.flyer.trips.length; i++) {
+        p = p.then(_ => new Promise(resolve =>
+            $.ajax({
+                type: "GET",
+                url: URL + 'ticket/' + GLOBALS.flyer.trips[i]._id + '/flyer/' + GLOBALS.flyer._id,
+                success: function(data){
+                    tickets.flights.push(data);
+                    $('#userHLJSON').html( renderjson(tickets) );
+                    resolve()
+                },
+            })
+        ));
+        
+    }//end for
+
+    
+    
+}
 
 
 //top up reward program
@@ -191,7 +257,7 @@ function loadTicket(d){
     $('#toTicket').html(d.to.toUpperCase());
 
     var time = new Date(d.time);
-    $('#ticketBoarding').html( time.getHours() + ':' + time.getMinutes());
+    $('#ticketBoarding').html( time.getHours() + ':' + ('00'+time.getMinutes()).slice(-2)) ;
     $('#ticketDate').html( (time.getMonth()+1)+'/'+time.getDate()+'/'+time.getFullYear() );
     
     var bagCounter = 0;
@@ -324,21 +390,29 @@ function carryOnToTicket(){
 }
 
 function firstLuggageToTIcket(){
-
     var data = { bag: { weight: 50, type: 0, beacon: bagBeacon } };
     addBagsToTicket(data);
 }
 
 
+function addLuggageDashboard(){
+    var data = { bag: { weight: 50, type: 0, beacon: true } };
+    
+    GLOBALS.thisTicket = GLOBALS.flyer.trips[0] || GLOBALS.allFlyers[0].trips[0];
+    addBagsToTicket(data);
+    
+}
+
 function addBagsToTicket(data){
-    if(bagBeacon){
+
+    if(data.bag.beacon){
         data.socketid = socket.id;
         data.msgType = 'bagBeacon';
     }
 
     $.ajax({
         type: 'POST',
-        url: URL + 'luggage/flyer/' + GLOBALS.flyer._id +'/ticket/' + GLOBALS.thisTicket.id,
+        url: URL + 'luggage/flyer/' + GLOBALS.flyer._id +'/ticket/' + GLOBALS.thisTicket._id,
         data: data,
         dataType: 'json',
         success: function(d){
@@ -350,7 +424,7 @@ function addBagsToTicket(data){
             }
            
             GLOBALS.thisTicket.luggage = d.luggage;
-            loadTicket(GLOBALS.thisTicket);
+            //loadTicket(GLOBALS.thisTicket);
             
         },
     });//end ajax call
@@ -360,14 +434,20 @@ function addBagsToTicket(data){
 
 
 function addfood(foodID){
-    var data = { food: 'Pasta', paid: false, id:1};
+
+    if(foodID == null){
+        foodID = GLOBALS.food;
+    }
+
+
+    var data = { food: 'Pasta', paid: true, id:1 };
     if(foodID == 'food1'){
         data.food = 'Beef Stew'
         data.paid = false;
         data.id = 1;
     }else if (foodID == 'food2'){
         data.food = 'Chicken Pasta'
-        data.paid = false;
+        data.paid = true;
         data.id = 2;
     }else if (foodID == 'food3'){
         data.food = 'Veggie'
@@ -394,7 +474,7 @@ function addfood(foodID){
 
     $.ajax({
         type: 'POST',
-        url: URL + 'food/flyer/' + GLOBALS.flyer._id +'/ticket/' + GLOBALS.thisTicket.id,
+        url: URL + 'food/flyer/' + GLOBALS.flyer._id +'/ticket/' + GLOBALS.thisTicket._id,
         data: data,
         dataType: 'json',
         success: function(d){
@@ -507,6 +587,19 @@ socket.on('disconnect', function () {
     console.log('disconnected');
 });
 
+socket.on('newTicket', function (data) { 
+    if(data.message.step == 0){
+        for(i=1; i <= 7; i++){
+            $('#newTicketStep' + i).css('background-color', '#D3CDAF');
+        }
+    }else{
+        $('#newTicketStep' + data.message.step).css('background-color', '#bbd3af');
+    }
+
+
+})
+
+
 socket.on('tktTo', function (data) { 
     if(data.message.step == 0){
         hypeDocument.startTimelineNamed('toTicketSteps', hypeDocument.kDirectionForward)
@@ -542,17 +635,22 @@ socket.on('tktFrom', function (data) {
 socket.on('newUser', function (data) { 
     console.log(data);
     if(data.message.step == 0){
-        hypeDocument.continueTimelineNamed('showNewFlyer', hypeDocument.kDirectionForward)
+        for(i=1; i <= 4; i++){
+            $('#newUserStep' + i).css('background-color', '#D3CDAF');
+        }
+
     }else{
-        $('#newUserStep' + data.message.step).css('background-color', '#16a085');
+        $('#newUserStep' + data.message.step).css('background-color', '#bbd3af');
     }
 
     if(data.message.complete == true){
+        /*
         $('#newUserButton')
         .prop('disabled', false)
         .click(()=>{
             loadUser(GLOBALS.flyer);
         })
+        */
     }
 
 })
@@ -561,19 +659,19 @@ socket.on('newUser', function (data) {
 socket.on('bagBeacon', function (data) { 
     console.log(data);
     if(data.message.step == 0){
-        $('#bagBeaconButton').prop('disabled', true)
-        $('#bagOptionsHeader').html('Checking Your Luggage In<br>With Bag Tracking');
-
+        //$('#bagBeaconButton').prop('disabled', true)
+        //$('#bagOptionsHeader').html('Checking Your Luggage In<br>With Bag Tracking');
         for(i=1; i <= 4; i++){
             $('#bagStep' + i).css('background-color', '#D3CDAF');
         }
 
         hypeDocument.continueTimelineNamed('bagOptions', hypeDocument.kDirectionForward)
     }else{
-        $('#bagStep' + data.message.step).css('background-color', '#16a085');
+        $('#bagStep' + data.message.step).css('background-color', '#bbd3af');
     }
 
     if(data.message.complete == true){
+        /*
         $('#bagBeaconButton')
         .prop('disabled', false)
         .click(()=>{
@@ -581,6 +679,7 @@ socket.on('bagBeacon', function (data) {
             hypeDocument.continueTimelineNamed('bagOptions', hypeDocument.kDirectionReverse)
 
         })
+        */
     }
 
 })
@@ -590,18 +689,21 @@ socket.on('food', function (data) {
 
     console.log(data);
     if(data.message.step == 0){
-        $('#bagBeaconButton').prop('disabled', true)
-        $('#bagOptionsHeader').html('Placing Your Food Order');
-
+       //$('#bagBeaconButton').prop('disabled', true)
+        //$('#bagOptionsHeader').html('Placing Your Food Order');
         for(i=1; i <= 4; i++){
-            $('#bagStep' + i).css('background-color', '#D3CDAF');
+            //$('#bagStep' + i).css('background-color', '#D3CDAF');
+            $('#foodStep' + i).css('background-color', '#D3CDAF');
         }
         hypeDocument.goToTimeInTimelineNamed(1, 'bagOptions')
+
     }else{
-        $('#bagStep' + data.message.step).css('background-color', '#16a085');
+        //$('#bagStep' + data.message.step).css('background-color', '#bbd3af');
+        $('#foodStep' + data.message.step).css('background-color', '#bbd3af');
     }
 
     if(data.message.complete == true){
+        /*
         $('#bagBeaconButton')
         .prop('disabled', false)
         .click(()=>{
@@ -609,6 +711,7 @@ socket.on('food', function (data) {
             hypeDocument.continueTimelineNamed('bagOptions', hypeDocument.kDirectionReverse)
 
         })
+        */
     }
 })
 
